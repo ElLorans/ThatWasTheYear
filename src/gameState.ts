@@ -19,15 +19,32 @@ export const initialGameState: GameState = {
   endCondition: { type: "infinite", value: 10 },
   gameStarted: false,
   gameOver: false,
+  lastResult: null,
 };
 
-export function shuffleDeck(deck: Song[]): Song[] {
-  const shuffled = [...deck];
-  for (let i = shuffled.length - 1; i > 0; i--) {
+function fisherYatesShuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return shuffled;
+  return arr;
+}
+
+export function shuffleDeck(deck: Song[], players: number): Song[] {
+  const sorted = [...deck].sort((a, b) => a.y - b.y);
+  const piles: Song[][] = Array.from({ length: players }, () => []);
+  for (let i = 0; i < sorted.length; i++) {
+    piles[i % players].push(sorted[i]);
+  }
+  piles.forEach(fisherYatesShuffle);
+  const result: Song[] = [];
+  const minLen = piles[piles.length - 1].length;
+  for (let i = 0; i < minLen; i++) {
+    for (const pile of piles) {
+      result.push(pile.pop()!);
+    }
+  }
+  return result;
 }
 
 export async function getDetailedITunesSong(song: Song): Promise<ITunesTrack | undefined> {
@@ -42,7 +59,7 @@ export async function getDetailedITunesSong(song: Song): Promise<ITunesTrack | u
         }
       }
     } catch (e) {
-      console.error("Error fetching song by itunesId", e);
+      console.error(`Error fetching song "${song.t} - ${song.a}" by itunesId`, e);
     }
   }
   if (!data) {
@@ -59,19 +76,28 @@ export async function getDetailedITunesSong(song: Song): Promise<ITunesTrack | u
 
 export async function getDetailedSong(song: Song): Promise<DetailedSong> {
   const res = await getDetailedITunesSong(song);
+  let releaseYear = undefined;
+  if (res) {
+    try {
+      const parsedYear = parseInt(res.releaseDate?.substring(0, 4), 10);
+      if (Math.abs(parsedYear - song.y) === 1) {
+        releaseYear = parsedYear;
+      }
+    } catch {}
+  }
   return {
     ...song,
     img: res?.artworkUrl100 || "./placeholder-100.png",
     preview: res?.previewUrl || null,
     link: res?.trackViewUrl || "#",
+    releaseYear: releaseYear,
   };
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case "INIT_DECK": {
-      const shuffled = shuffleDeck(action.songs);
-      return { ...state, deck: shuffled, allSongs: action.songs };
+      return { ...state, deck: [], allSongs: action.songs };
     }
 
     case "SET_END_CONDITION":
@@ -80,11 +106,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "START_GAME":
       return {
         ...state,
+        deck: shuffleDeck(state.allSongs, action.players.length),
         players: action.players,
         currentPlayerIndex: 0,
         roundCount: 1,
         gameStarted: true,
-        deck: state.deck.slice(0, -action.players.length),
       };
 
     case "DRAW_SONG":
@@ -94,15 +120,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         deck: state.deck.slice(0, -1),
       };
 
+    case "UPDATE_CURRENT_SONG":
+      return { ...state, currentSong: action.song };
+
     case "PLACE_SONG": {
       const player = state.players[state.currentPlayerIndex];
       const timeline = player.timeline;
-      const song = state.currentSong!;
+      const song = { ...state.currentSong! };
       const pos = action.position;
 
-      const isCorrect =
-        (pos === 0 || song.y >= timeline[pos - 1].y) &&
-        (pos === timeline.length || song.y <= timeline[pos].y);
+      const fitsAt = (year: number) =>
+        (pos === 0 || year >= timeline[pos - 1].y) &&
+        (pos === timeline.length || year <= timeline[pos].y);
+
+      const isCorrect = fitsAt(song.y) || (!!song.releaseYear && fitsAt(song.releaseYear));
+      if (isCorrect && !fitsAt(song.y) && song.releaseYear) {
+        console.debug(`Using release year ${song.releaseYear} instead of ${song.y}`);
+        song.y = song.releaseYear;
+      }
 
       const newPlayers = state.players.map((p, i) => {
         if (i !== state.currentPlayerIndex) return p;
@@ -125,6 +160,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           // timeline starts with 1 song, so correct placements = timeline.length - 1
           gameOver = newPlayers.some((p) => p.timeline.length - 1 >= value);
         }
+        if (!gameOver) {
+          // Check if songs in deck are enough
+          gameOver = state.deck.length < state.players.length;
+        }
       }
 
       return {
@@ -134,14 +173,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         currentPlayerIndex: nextIndex,
         roundCount: nextRound,
         gameOver,
+        lastResult: { correct: isCorrect, song },
       };
     }
+
+    case "CLEAR_RESULT":
+      return { ...state, lastResult: null };
 
     case "RESTORE":
       if (!isValidGameState(action.state)) {
         throw new Error("Invalid game state received in RESTORE action");
       }
-      return action.state;
+      return { ...action.state, lastResult: null };
 
     case "RESET":
       localStorage.removeItem(STORAGE_KEY);
@@ -149,8 +192,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...initialGameState,
         players: state.players,
         endCondition: state.endCondition,
-        deck: shuffleDeck(state.allSongs),
+        deck: [],
         allSongs: state.allSongs,
+        lastResult: null,
       };
 
     default:
@@ -159,7 +203,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 }
 
 export function saveGameState(state: GameState): void {
-  const { allSongs: _, ...rest } = state;
+  const { allSongs: _, lastResult: __, ...rest } = state;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
 }
 
@@ -206,6 +250,12 @@ function isValidGameState(obj: unknown): obj is GameState {
     typeof s.gameStarted === "boolean" &&
     typeof s.gameOver === "boolean"
   );
+}
+
+export function getStartingYear(songs: Song[]): number {
+  const avg = songs.reduce((sum, s) => sum + s.y, 0) / songs.length;
+  const offset = Math.floor(Math.random() * 7) - 3; // -3 to +3
+  return Math.round(avg) + offset;
 }
 
 export function loadGameState(): GameState | null {

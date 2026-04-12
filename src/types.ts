@@ -9,6 +9,7 @@ export interface DetailedSong extends Song {
   img: string;
   preview: string | null;
   link: string;
+  releaseYear?: number;
 }
 
 export interface Player {
@@ -21,6 +22,11 @@ export interface EndCondition {
   value: number;
 }
 
+export interface PlacementResult {
+  correct: boolean;
+  song: DetailedSong;
+}
+
 export interface GameState {
   players: Player[];
   currentPlayerIndex: number;
@@ -31,6 +37,7 @@ export interface GameState {
   endCondition: EndCondition;
   gameStarted: boolean;
   gameOver: boolean;
+  lastResult: PlacementResult | null;
 }
 
 export type GameAction =
@@ -39,6 +46,8 @@ export type GameAction =
   | { type: "SET_END_CONDITION"; endCondition: EndCondition }
   | { type: "DRAW_SONG"; song: DetailedSong }
   | { type: "PLACE_SONG"; position: number }
+  | { type: "UPDATE_CURRENT_SONG"; song: DetailedSong }
+  | { type: "CLEAR_RESULT" }
   | { type: "RESTORE"; state: GameState }
   | { type: "RESET" };
 
