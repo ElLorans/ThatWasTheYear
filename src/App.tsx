@@ -64,7 +64,11 @@ export default function App() {
 
   async function handleDrawSong() {
     if (state.deck.length === 0) return;
-    const rawSong = state.deck[state.deck.length - 1];
+    const rawSong = state.deck.at(-1);
+    if (!rawSong) {
+      console.error("Deck is empty in handleDrawSong");
+      return;
+    }
     try {
       const song = await getDetailedSong(rawSong);
       dispatch({ type: "DRAW_SONG", song });
@@ -147,6 +151,7 @@ export default function App() {
           currentPlayer={currentPlayer.name}
           roundCount={state.roundCount}
           currentSong={state.currentSong}
+          endCondition={state.endCondition}
           onDrawSong={handleDrawSong}
           onReplay={playPreview}
           onReset={handleReset}
@@ -156,6 +161,7 @@ export default function App() {
           players={state.players}
           currentPlayerIndex={state.currentPlayerIndex}
           hasCurrentSong={state.currentSong !== null}
+          endCondition={state.endCondition}
           disabled={state.lastResult !== null}
           onPlaceSong={handlePlaceSong}
         />

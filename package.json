@@ -6,12 +6,14 @@
     "build": "bun build src/index.tsx --outdir=dist --target=browser --sourcemap=external --production && bun run copy-assets",
     "copy-assets": "bun run scripts/copy-assets.ts",
     "serve": "bun run --hot scripts/server.ts",
-    "check-songs": "bun run scripts/check-songs.ts",
-    "add-song": "bun run scripts/add-song.ts",
+    "validate-songs": "bun run scripts/validate-songs.ts",
+    "tc": "bun run tsc --noEmit -p .",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check"
+    "fmt:check": "oxfmt --check",
+    "test": "bun test",
+    "checks": "bun run tc && bun run lint && bun run fmt:check && bun run test"
   },
   "dependencies": {
     "react": "^19.2.4",

@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import type { ITunesTrack, Song } from "../src/types";
-import songs from "../assets/songs.json";
 import { getDetailedITunesSong } from "../src/gameState";
+import { loadSongsFromArgs } from "./lib/load-songs";
 
 function checkSong(song: Song, track: ITunesTrack | undefined) {
   // If track not found on iTunes, return all-false result
@@ -92,6 +92,7 @@ async function saveResults(songs: Song[]) {
 async function main() {
   const existing = await loadExisting();
   console.log(`Found ${existing.size} already-accepted songs.`);
+  const songs = await loadSongsFromArgs();
   console.log(`Checking ${songs.length} songs...\n`);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -107,7 +108,7 @@ async function main() {
       i++;
       continue;
     }
-    let track: ITunesTrack | undefined = undefined;
+    let track;
     track = await getDetailedITunesSong(song);
     if (track) {
       await Bun.sleep((60 * 1000) / 20);
@@ -130,7 +131,7 @@ async function main() {
       i++;
     } else {
       const trackInfo = result.track
-        ? `${result.track.trackName} - ${result.track.artistName} (${result.track.releaseDate?.substring(0, 4)})`
+        ? `${result.track.trackName} - ${result.track.artistName} (${result.track.releaseDate?.slice(0, 4)})`
         : "Not found";
       console.log(`DB: ${song.t} - ${song.a} (${song.y})`);
       console.log(`iTunes: ${trackInfo}`);
@@ -183,4 +184,4 @@ async function main() {
   await saveResults(okSongs);
 }
 
-main();
+await main();
